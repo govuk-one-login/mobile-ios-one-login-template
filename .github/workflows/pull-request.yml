@@ -1,0 +1,64 @@
+name: iOS Pull Request
+
+on:
+  pull_request:
+    types: [ opened, reopened, synchronize, ready_for_review ]
+    branches: [ develop, release/*, main ]
+    
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and Test default scheme using any available iPhone simulator
+    runs-on: self-hosted
+
+    steps:
+      - name: Add path globally
+        run: echo "/usr/local/bin" >> $GITHUB_PATH
+
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          lfs: 'true'
+          fetch-depth: 0
+
+      - name: Lint
+        if: github.event.pull_request.draft == false
+        run: swiftlint --strict
+          
+      - name: Check Dependencies
+        uses: GetSidetrack/action-xcodeproj-spm-update@main
+        with:
+          workspace: 'OneLogin.xcworkspace'
+          scheme: 'OneLogin'
+
+      - name: Create Pull Request
+        if: steps.resolution.outputs.dependenciesChanged == 'true'
+        uses: peter-evans/create-pull-request@v3
+        with:
+          branch: 'dependencies/ios'
+          delete-branch: true
+          commit-message: 'Update Xcode Dependencies'
+          title: 'Updated Xcode Dependencies'
+
+      - name: Build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LC_ALL: "en_US.UTF-8"
+          LANG: "en_US.UTF-8"
+        run: |
+          pull_number=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+        
+          export GEM_HOME=$HOME/.gem
+          export GEM_PATH=$HOME/.gem
+          bundle install
+          
+          bundle exec fastlane test scheme:"IdentityBuild" \
+            sonar_token:"${{secrets.SONAR_TOKEN}}" \
+            workspace:${{github.workspace}} \
+            source_branch:${{github.head_ref}} \
+            target_branch:${{github.base_ref}} \
+            pr_number:$pull_number \
+            testplan:UnitTestPlan
