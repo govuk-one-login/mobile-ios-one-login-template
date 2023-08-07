@@ -5,3 +5,4 @@ This repository hosts the iOS Mobile app for Document Checking as part of Digita
 Please ensure that you have enabled the Git hooks, so that you don't get caught out!:
 ```
 git config core.hooksPath hooks
+```
